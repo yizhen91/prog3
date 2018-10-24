@@ -15,6 +15,15 @@ var EyeLoc = new vec4.fromValues(0.5, 0.5, -0.5, 1.0);
 var complete_set = [];
 
 var pressedKey = [];
+var selectedTriangle = -1;
+var mySelection = -1;
+var numTriangle;
+var is_blinn_phong = 1; // if(phong) is_blinn_phong=0;
+
+var ambientWeight =0;
+var diffuseWeight =0;
+var spececularWeight=0;
+var nWeight =0;
 
 /* webgl globals */
 var gl = null; // the all powerful gl object. It's all here folks!
@@ -44,6 +53,8 @@ var uniformModelMat;
 var uniformLightLoc;
 var uniformLightCol;
 var uniformEyeLoc;
+
+var uniformBlinnPhong;
 
 // ASSIGNMENT HELPER FUNCTIONS
 
@@ -109,9 +120,13 @@ function loadTriangles() {
     var vtxBufferSize = 0; // the number of vertices in the vertex buffer
     var indexOffset = vec3.create(); // the index offset for the current set
 
+    var vtxToAdd = [];
+
     for (var whichSet=0; whichSet<inputTriangles.length; whichSet++)
     {
       vec3.set(indexOffset,vtxBufferSize,vtxBufferSize,vtxBufferSize); // update vertex offset
+      var centroid = new vec3.fromValues(0,0,0);
+      numTriangle = inputTriangles.length;
 
       var triangle_gp = {};
       triangle_gp.triBufferSize = 0;
@@ -126,10 +141,30 @@ function loadTriangles() {
       // set up the vertex coord array
       for (whichSetVert=0; whichSetVert<inputTriangles[whichSet].vertices.length; whichSetVert++)
       {
-        triangle_gp.coordArray = triangle_gp.coordArray.concat(inputTriangles[whichSet].vertices[whichSetVert]);
+        vtxToAdd = inputTriangles[whichSet].vertices[whichSetVert];
+        if(whichSet == mySelection && selectedTriangle == 1)
+          vec3.add(centroid, centroid, new vec3.fromValues(vtxToAdd[0], vtxToAdd[1], vtxToAdd[2]));
+        else
+          triangle_gp.coordArray.push(vtxToAdd[0], vtxToAdd[1], vtxToAdd[2]);
+          //triangle_gp.coordArray = triangle_gp.coordArray.concat(inputTriangles[whichSet].vertices[whichSetVert]);
         //coordArray = coordArray.concat(inputTriangles[whichSet].vertices[whichSetVert]);
         // console.log(inputTriangles[whichSet].vertices[whichSetVert]);
       }
+
+      vec3.scale(centroid, centroid, 1/(inputTriangles[whichSet].vertices.length));
+
+      for (whichSetVert=0; whichSetVert<inputTriangles[whichSet].vertices.length; whichSetVert++)
+      {
+        if(mySelection==whichSet && selectedTriangle==1)
+        {
+          vtxToAdd = inputTriangles[whichSet].vertices[whichSetVert];
+          triangle_gp.coordArray.push( ((vtxToAdd[0]-centroid[0])*1.2)+centroid[0],
+                                       ((vtxToAdd[1]-centroid[1])*1.2)+centroid[1],
+                                       ((vtxToAdd[2]-centroid[2])*1.2)+centroid[2] );
+        }
+      }
+
+
       // set up the triangle index array
       for (whichSetTri=0; whichSetTri<inputTriangles[whichSet].triangles.length; whichSetTri++)
       {
@@ -147,10 +182,28 @@ function loadTriangles() {
         var diff_col = inputTriangles[whichSet].material.diffuse;
         var ambi_col = inputTriangles[whichSet].material.ambient;
         var spec_col = inputTriangles[whichSet].material.specular;
-        triangle_gp.diffuseArray.push(diff_col[0], diff_col[1], diff_col[2], 1.0);
-        triangle_gp.ambientArray.push(ambi_col[0], ambi_col[1], ambi_col[2], 1.0);
-        triangle_gp.specularArray.push(spec_col[0], spec_col[1], spec_col[2], 1.0);
-        triangle_gp.nValueArray.push(inputTriangles[whichSet].material.n);
+
+        if (whichSet == mySelection)
+        {
+          triangle_gp.ambientArray.push(roundColor(ambi_col[0] + ambientWeight),
+                                        roundColor(ambi_col[1] + ambientWeight),
+                                        roundColor(ambi_col[2] + ambientWeight), 1.0);
+          triangle_gp.diffuseArray.push(roundColor(diff_col[0] + diffuseWeight),
+                                        roundColor(diff_col[1] + diffuseWeight),
+                                        roundColor(diff_col[2] + diffuseWeight), 1.0);
+          triangle_gp.specularArray.push(roundColor(spec_col[0] + spececularWeight),
+                                        roundColor(spec_col[1] + spececularWeight),
+                                        roundColor(spec_col[2] + spececularWeight), 1.0);
+          triangle_gp.nValueArray.push(inputTriangles[whichSet].material.n + nWeight);
+        }
+
+        else
+        {
+          triangle_gp.diffuseArray.push(diff_col[0], diff_col[1], diff_col[2], 1.0);
+          triangle_gp.ambientArray.push(ambi_col[0], ambi_col[1], ambi_col[2], 1.0);
+          triangle_gp.specularArray.push(spec_col[0], spec_col[1], spec_col[2], 1.0);
+          triangle_gp.nValueArray.push(inputTriangles[whichSet].material.n);
+        }
       }
 
       //setup normal vertices
@@ -223,6 +276,8 @@ function setupShaders() {
       varying float finalNVal;
       varying vec4 finalvertexPosition;
 
+      uniform int selectBlinnPhong;
+
       void main(void) {
 
         vec4 l = normalize(finalLightLoc - finalvertexPosition);
@@ -232,11 +287,20 @@ function setupShaders() {
         float NdotL = max(0.0, dot(N, l));
         float NdotH = max(0.0, dot(N, H));
 
+        vec4 R = normalize(2.0 * NdotL * (N-l));
+        vec4 V = normalize(finalEyeLoc - finalvertexPosition);
+        float RdotV = max(0.0, dot(R, V));
+
         vec4 ambientpart = finalLightCol * finalAmbientColor;
         vec4 diffusepart = finalDiffuseColor * finalLightCol * NdotL;
-        vec4 specularpart = finalSpecularColor * finalLightCol * pow(NdotH, finalNVal);
-        vec4 finalColor = ambientpart + diffusepart + specularpart;
+        vec4 specularpart;
 
+        if (selectBlinnPhong == 1)
+          specularpart = finalSpecularColor * finalLightCol * pow(NdotH, finalNVal);
+        else
+          specularpart = finalSpecularColor * finalLightCol * pow(RdotV, finalNVal);
+
+        vec4 finalColor = ambientpart + diffusepart + specularpart;
         gl_FragColor = finalColor;
       }
     `;
@@ -312,6 +376,8 @@ function setupShaders() {
               uniformLightLoc = gl.getUniformLocation(shaderProgram, "finalLightLoc");
               uniformLightCol = gl.getUniformLocation(shaderProgram, "finalLightCol");
 
+              uniformBlinnPhong = gl.getUniformLocation(shaderProgram, "selectBlinnPhong");
+
               diffusePositionAttrib = gl.getAttribLocation(shaderProgram, "diffuseAttribute");
               gl.enableVertexAttribArray(diffusePositionAttrib);
 
@@ -349,8 +415,21 @@ function renderTriangles() {
   //console.log(complete_set);
   for (let i=0; i<complete_set.length; i++)
   {
+    if(mySelection == i)
+    {
+      var tmpMatrix = mat4.create();
+      mat4.identity(tmpMatrix);
+      mat4.multiply(tmpMatrix, tmpMatrix, translateMatrix);
+      mat4.multiply(tmpMatrix, tmpMatrix, rotateMatrix);
+      mat4.multiply(tmpMatrix, modelMatrix, tmpMatrix);
 
-    gl.uniformMatrix4fv(uniformModelMat, false, modelMatrix);
+      gl.uniformMatrix4fv(uniformModelMat, false, tmpMatrix);
+      gl.uniform1i(uniformBlinnPhong, is_blinn_phong);
+    }
+    else {
+        gl.uniformMatrix4fv(uniformModelMat, false, modelMatrix);
+        gl.uniform1i(uniformBlinnPhong, 1);
+    }
 
     // vertex buffer: activate and feed into vertex shader
     gl.bindBuffer(gl.ARRAY_BUFFER,complete_set[i].vertexBuffer); // activate
@@ -436,7 +515,90 @@ function handleKeyDown()
       mat4.rotate(modelMatrix, modelMatrix, -0.05, [1, 0, 0]);
       renderTriangles();
       return;
+    case "ArrowLeft":
+      console.log("select and highlight triangle set");
+      mySelection = (mySelection + 1) % numTriangle;
+      complete_set = [];
+      selectedTriangle = 1;
+      resetWeight();
+      loadTriangles();
+      renderTriangles();
+      return;
+    case "ArrowRight":
+      console.log("select and highlight triangle set");
+      if(mySelection > 0)
+        mySelection--;
+      else
+        mySelection = numTriangle-1;
+      complete_set = [];
+      selectedTriangle = 1;
+      resetWeight();
+      loadTriangles();
+      renderTriangles();
+      return;
+    case " ":
+      console.log("deselect and turn off highlight");
+      mySelection = -1;
+      selectedTriangle = -1;
+      complete_set = [];
+      resetWeight();
+      loadTriangles();
+      renderTriangles();
+      return;
+  }
 
+  if(mySelection >= 0)
+  {
+    switch (event.key) {
+      case "b":
+        is_blinn_phong = (is_blinn_phong + 1)%2;
+        console.log("toggle between Phong(0) and Blinn-Phong lighting(1): "+ is_blinn_phong);
+        renderTriangles();
+        return;
+      case "n":
+        if (nWeight < 20)
+          nWeight++;
+        else {
+          nWeight=0;
+        }
+        console.log("increment the specular integer exponent by 1, n: "+ nWeight);
+        loadTriangles();
+        renderTriangles();
+        return;
+      case "1":
+        complete_set = [];
+        if (ambientWeight < 1)
+          ambientWeight+=0.1;
+        else {
+          ambientWeight = 0;
+        }
+        console.log("increase the ambient weight by 0.1, ambient: " + ambientWeight);
+        loadTriangles();
+        renderTriangles();
+        return;
+      case "2":
+        complete_set = [];
+        if (diffuseWeight < 1)
+          diffuseWeight+=0.1;
+        else {
+          diffuseWeight = 0;
+        }
+        console.log("increase the diffuse weight by 0.1, diffuse: " + diffuseWeight);
+        loadTriangles();
+        renderTriangles();
+        return;
+      case "3":
+        complete_set = [];
+        if (spececularWeight < 1)
+          spececularWeight+=0.1;
+        else {
+          spececularWeight = 0;
+        }
+        console.log("increase the specular weight by 0.1, specular: "+ spececularWeight);
+        loadTriangles();
+        renderTriangles();
+        return;
+    }
   }
 }
 
@@ -460,6 +622,21 @@ function initMatrices()
   mat4.perspective(perspMatrix, Math.PI/2, 1, 0.1, 100.0);
   mat4.identity(translateMatrix);
   mat4.identity(rotateMatrix);
+}
+
+function resetWeight()
+{
+    ambientWeight =0;
+    diffuseWeight =0;
+    spececularWeight=0;
+    nWeight =0;
+}
+
+function roundColor(color)
+{
+  if(color > 1.0)
+    color = 0.0;
+  return color;
 }
 
 /* MAIN -- HERE is where execution begins after window load */
