@@ -598,6 +598,66 @@ function handleKeyDown()
         loadTriangles();
         renderTriangles();
         return;
+      case "k":
+        console.log("translate selection left along view X");
+        mat4.translate(translateMatrix, translateMatrix, [0.1, 0, 0]);
+        renderTriangles();
+        return;
+      case ";":
+        console.log("translate selection right along view X");
+        mat4.translate(translateMatrix, translateMatrix, [-0.1, 0, 0]);
+        renderTriangles();
+        return;
+      case "o":
+        console.log("translate selection forward along view Z");
+        mat4.translate(translateMatrix, translateMatrix, [0, 0, 0.1]);
+        renderTriangles();
+        return;
+      case "l":
+        console.log("translate selection backward along view Z");
+        mat4.translate(translateMatrix, translateMatrix, [0, 0, -0.1]);
+        renderTriangles();
+        return;
+      case "i":
+        console.log("translate selection up along view Y");
+        mat4.translate(translateMatrix, translateMatrix, [0, 0.1, 0]);
+        renderTriangles();
+        return;
+      case "p":
+        console.log("translate selection down along view Y");
+        mat4.translate(translateMatrix, translateMatrix, [0, -0.1, 0]);
+        renderTriangles();
+        return;
+      case "K":
+        console.log("rotate selection left around view Y");
+        mat4.rotate(rotateMatrix, rotateMatrix, 0.08, [0, 1, 0]);
+        renderTriangles();
+        return;
+      case ":":
+        console.log("rotate selection right around view Y");
+        mat4.rotate(rotateMatrix, rotateMatrix, -0.05, [0, 1, 0]);
+        renderTriangles();
+        return;
+      case "O":
+        console.log("rotate selection forward around view X");
+        mat4.rotate(rotateMatrix, rotateMatrix, 0.05, [1, 0, 0]);
+        renderTriangles();
+        return;
+      case "L":
+        console.log("rotate selection backward around view X");
+        mat4.rotate(rotateMatrix, rotateMatrix, -0.05, [1, 0, 0]);
+        renderTriangles();
+        return;
+      case "I":
+        console.log("rotate selection clockwise around view Z");
+        mat4.rotate(rotateMatrix, rotateMatrix, 0.05, [0, 0, 1]);
+        renderTriangles();
+        return;
+      case "P":
+        console.log("rotate selection counterclockwise around view Z");
+        mat4.rotate(rotateMatrix, rotateMatrix, -0.05, [0, 0, 1]);
+        renderTriangles();
+        return;
     }
   }
 }
